@@ -1,24 +1,34 @@
-# Use official Maven image with JDK 17
+# ---- Build Stage ----
+# Use an official Maven image with a specific JDK version for reproducible builds
 FROM maven:3.9.6-eclipse-temurin-17 AS build
 
+# Set the working directory inside the container
 WORKDIR /app
 
-# Copy pom.xml and download dependencies
+# Copy only the pom.xml first to leverage Docker's layer caching.
+# Dependencies will only be re-downloaded if pom.xml changes.
 COPY pom.xml .
 RUN mvn dependency:go-offline
 
-# Copy source code and build the JAR
+# Copy the rest of your source code
 COPY src ./src
+
+# Package the application, skipping tests which aren't needed for a production build
 RUN mvn clean package -DskipTests
 
-# Runtime image
-FROM eclipse-temurin:17-jdk-alpine
 
+# ---- Runtime Stage ----
+# Use a lightweight, production-ready JRE image to keep the final image size small
+FROM eclipse-temurin:17-jre-alpine
+
+# Set the working directory for the runtime container
 WORKDIR /app
 
-# Copy JAR from builder image
+# Copy the built JAR file from the 'build' stage
 COPY --from=build /app/target/*.jar app.jar
 
+# Expose the port your application runs on (documentation for Render)
 EXPOSE 8080
 
+# The command to run your application when the container starts
 ENTRYPOINT ["java", "-jar", "app.jar"]
