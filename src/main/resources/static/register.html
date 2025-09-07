@@ -1,0 +1,114 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Register - Chat & Stream</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    body {
+        font-family: 'Inter', sans-serif;
+    }
+  </style>
+</head>
+<body class="bg-gray-100">
+
+<div class="min-h-screen flex items-center justify-center p-4">
+  <div class="bg-white rounded-xl shadow-lg p-8 w-full max-w-md">
+    <h1 class="text-3xl font-bold text-center text-gray-800 mb-6">Create an Account</h1>
+
+    <form id="registration-form" class="space-y-4">
+
+      <div>
+        <label for="username" class="block text-gray-700 font-bold mb-2">Username</label>
+        <input type="text" id="username" name="username" class="w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" placeholder="e.g., john_doe" required>
+      </div>
+
+      <div>
+        <label for="email" class="block text-gray-700 font-bold mb-2">Email Address</label>
+        <input type="email" id="email" name="email" class="w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" placeholder="you@example.com" required>
+      </div>
+
+      <div>
+        <label for="password" class="block text-gray-700 font-bold mb-2">Password</label>
+        <input type="password" id="password" name="password" class="w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" placeholder="••••••••" required>
+      </div>
+
+      <div>
+        <label for="confirm-password" class="block text-gray-700 font-bold mb-2">Confirm Password</label>
+        <input type="password" id="confirm-password" name="confirm-password" class="w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" placeholder="••••••••" required>
+      </div>
+
+      <button type="submit" id="submit-button" class="w-full bg-blue-600 text-white font-bold py-3 px-4 rounded-lg hover:bg-blue-700 transition duration-300 mt-2">
+        Sign Up
+      </button>
+    </form>
+
+    <div id="registration-message-box" class="mt-4 text-center text-sm font-semibold"></div>
+
+  </div>
+</div>
+
+<script>
+  document.addEventListener('DOMContentLoaded', () => {
+      const registrationForm = document.getElementById('registration-form');
+      const messageBox = document.getElementById('registration-message-box');
+      const submitButton = document.getElementById('submit-button');
+
+      registrationForm.addEventListener('submit', async (event) => {
+          event.preventDefault();
+          messageBox.textContent = ''; // Clear previous messages
+
+          const password = document.getElementById('password').value;
+          const confirmPassword = document.getElementById('confirm-password').value;
+
+          // --- Client-side validation for matching passwords ---
+          if (password !== confirmPassword) {
+              messageBox.textContent = "Passwords do not match!";
+              messageBox.style.color = 'red';
+              return; // Stop the submission
+          }
+
+          submitButton.disabled = true;
+          submitButton.textContent = 'Signing Up...';
+
+          const formData = new FormData(registrationForm);
+          const data = Object.fromEntries(formData.entries());
+
+          // We don't need to send the confirmation password to the backend
+          delete data['confirm-password'];
+
+          console.log("Sending Registration Data:", data);
+
+          try {
+              const response = await fetch('/api/register', {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify(data) // Now includes the 'password' field
+              });
+
+              const resultText = await response.text();
+
+              if (response.ok) {
+                  messageBox.style.color = 'green';
+                  messageBox.textContent = "Registration successful! Redirecting to the main page...";
+                  setTimeout(() => {
+                      window.location.href = "/"; // Redirect to login/main page
+                  }, 2000);
+              } else {
+                  messageBox.textContent = resultText;
+                  messageBox.style.color = 'red';
+              }
+          } catch (error) {
+              console.error('Error:', error);
+              messageBox.textContent = "Registration failed. Please try again.";
+              messageBox.style.color = 'red';
+          } finally {
+              submitButton.disabled = false;
+              submitButton.textContent = 'Sign Up';
+          }
+      });
+  });
+</script>
+</body>
+</html>

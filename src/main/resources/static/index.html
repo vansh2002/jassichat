@@ -1,0 +1,353 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Spring Boot Chat & Stream</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        body { font-family: 'Inter', sans-serif; background-color: #f3f4f6; }
+        #chat-messages {
+            flex-grow: 1;
+            overflow-y: auto;
+            padding: 1rem;
+            display: flex;
+            flex-direction: column-reverse;
+        }
+        .message-box {
+            max-width: 70%;
+            padding: 0.75rem 1rem;
+            border-radius: 1rem;
+            margin-bottom: 0.5rem;
+            word-wrap: break-word;
+        }
+        .message-box.system {
+            align-self: center;
+            text-align: center;
+            background-color: transparent;
+            color: #6b7280;
+            font-style: italic;
+            font-size: 0.875rem;
+        }
+        .message-box.own {
+            align-self: flex-end;
+            background-color: #3b82f6;
+            color: white;
+            border-bottom-right-radius: 0;
+        }
+        .message-box.other {
+            align-self: flex-start;
+            background-color: #e5e7eb;
+            color: #111827;
+            border-bottom-left-radius: 0;
+        }
+        .modal-overlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background-color: rgba(0, 0, 0, 0.6); display: flex; justify-content: center; align-items: center; z-index: 50; }
+        .modal-content { background: white; padding: 2rem; border-radius: 0.5rem; width: 90%; max-width: 500px; max-height: 80vh; display: flex; flex-direction: column; }
+    </style>
+</head>
+<body class="bg-gray-100">
+
+<div id="verification-modal" class="hidden modal-overlay">
+    <div class="bg-white rounded-xl shadow-lg p-8 w-full max-w-md" id="verification-form-container">
+        <div class="flex justify-between items-center mb-6">
+            <h1 class="text-2xl font-bold text-gray-800">Verify to Chat</h1>
+            <button id="close-verification-modal-btn" class="text-gray-500 hover:text-gray-700 text-2xl font-bold">&times;</button>
+        </div>
+        <p class="text-center text-gray-600 mb-4">Please enter your username to continue.</p>
+        <form id="username-form">
+            <div class="mb-4">
+                <label for="username-input" class="block text-gray-700 font-bold mb-2">Username</label>
+                <input type="text" id="username-input" class="w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" placeholder="e.g., john_doe" required>
+            </div>
+            <button type="submit" class="w-full bg-blue-600 text-white font-bold py-2 px-4 rounded-lg hover:bg-blue-700 transition">Continue</button>
+        </form>
+        <form id="code-form" class="mt-6 hidden">
+            <div class="mb-4">
+                <label for="verification-code" class="block text-gray-700 font-bold mb-2">Verification Code</label>
+                <input type="text" id="verification-code" class="w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" placeholder="Enter the code sent to your email" required>
+            </div>
+            <button type="submit" class="w-full bg-green-600 text-white font-bold py-2 px-4 rounded-lg hover:bg-green-700 transition">Verify</button>
+        </form>
+        <form id="password-form" class="mt-6 hidden">
+            <div class="mb-4">
+                <label for="password-input" class="block text-gray-700 font-bold mb-2">Password</label>
+                <input type="password" id="password-input" class="w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" placeholder="Enter your password" required>
+            </div>
+            <button type="submit" class="w-full bg-blue-600 text-white font-bold py-2 px-4 rounded-lg hover:bg-blue-700 transition">Sign In</button>
+        </form>
+        <div id="message-box" class="mt-4 text-center text-sm font-semibold"></div>
+    </div>
+</div>
+<div class="w-screen h-screen bg-white flex flex-col lg:flex-row" id="chat-window">
+    <div id="video-wrapper" class="w-full h-1/3 lg:w-1/2 lg:h-full bg-black flex-shrink-0">
+        <div id="player" class="w-full h-full"></div>
+    </div>
+    <div id="chat-wrapper" class="w-full flex-grow flex flex-col border-l border-gray-200">
+        <header class="bg-slate-800 text-slate-100 py-2 flex justify-between items-center px-4 flex-shrink-0">
+            <h2 class="text-base font-bold">Public Chat</h2>
+            <div class="relative">
+                <button id="menu-btn" class="bg-slate-700 text-slate-200 px-4 py-1 rounded-lg font-semibold hover:bg-slate-600 transition-colors text-sm">Menu</button>
+                <div id="dropdown-menu" class="hidden absolute top-full right-0 mt-2 w-48 bg-white rounded-md shadow-lg py-1 z-20">
+                    <button id="toggle-video-btn" class="block w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100">Toggle Video</button>
+                    <button id="change-video-btn" class="block w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100">Change Video</button>
+                    <button id="show-users-btn" class="block w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100">Online Users</button>
+                    <a href="/register.html" class="block w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100">Register</a>
+                    <button id="signin-menu-btn" class="block w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100">Sign In</button>
+                    <button id="signout-btn" class="hidden w-full text-left px-4 py-2 text-sm text-red-600 hover:bg-gray-100 font-semibold">Sign Out</button>
+                </div>
+            </div>
+        </header>
+        <div id="chat-messages"></div>
+        <form id="message-form" class="p-4 border-t border-gray-200 bg-white flex-shrink-0">
+            <div class="flex items-center">
+                <input type="text" id="message-input" autocomplete="off" placeholder="Type a message..." class="flex-grow border-2 border-gray-300 rounded-full px-4 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500">
+                <button type="submit" class="ml-4 bg-blue-600 text-white rounded-full p-3 shadow-lg hover:bg-blue-700"><svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" /></svg></button>
+            </div>
+        </form>
+    </div>
+</div>
+<div id="youtube-modal" class="hidden modal-overlay">
+    <div class="modal-content">
+        <div class="flex justify-between items-center mb-4"><h3 class="text-xl font-bold">Search YouTube</h3><button id="close-youtube-modal-btn" class="text-gray-500 hover:text-gray-700 text-2xl font-bold">&times;</button></div>
+        <div class="flex mb-4"><input type="text" id="youtube-search-input" class="flex-grow border p-2 rounded-l-lg" placeholder="Search for a video..."><button id="youtube-search-btn" class="bg-blue-600 text-white px-4 rounded-r-lg">Search</button></div>
+        <div id="youtube-results" class="overflow-y-auto"></div>
+    </div>
+</div>
+<div id="user-modal" class="hidden modal-overlay">
+    <div class="modal-content">
+        <div class="flex justify-between items-center mb-4"><h3 class="text-xl font-bold">Active Users</h3><button id="close-modal-btn" class="text-gray-500 hover:text-gray-700 text-2xl font-bold">&times;</button></div>
+        <ul id="user-list" class="space-y-2"></ul>
+    </div>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/sockjs-client/1.5.1/sockjs.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/stomp.js/2.3.3/stomp.min.js"></script>
+<script src="https://www.youtube.com/iframe_api"></script>
+
+<script>
+    document.addEventListener('DOMContentLoaded', () => {
+        // --- DOM Element References ---
+        const verificationModal = document.getElementById('verification-modal');
+        const closeVerificationModalBtn = document.getElementById('close-verification-modal-btn');
+        const usernameForm = document.getElementById('username-form');
+        const codeForm = document.getElementById('code-form');
+        const passwordForm = document.getElementById('password-form');
+        const messageBox = document.getElementById('message-box');
+        const messageForm = document.getElementById('message-form');
+        const messageInput = document.getElementById('message-input');
+        const menuBtn = document.getElementById('menu-btn');
+        const dropdownMenu = document.getElementById('dropdown-menu');
+        const signInMenuBtn = document.getElementById('signin-menu-btn');
+        const signOutBtn = document.getElementById('signout-btn');
+        const chatMessages = document.getElementById('chat-messages');
+        const showUsersBtn = document.getElementById('show-users-btn');
+        const userModal = document.getElementById('user-modal');
+        const closeModalBtn = document.getElementById('close-modal-btn');
+        const userList = document.getElementById('user-list');
+        const changeVideoBtn = document.getElementById('change-video-btn');
+        const youtubeModal = document.getElementById('youtube-modal');
+        const closeYoutubeModalBtn = document.getElementById('close-youtube-modal-btn');
+        const youtubeSearchInput = document.getElementById('youtube-search-input');
+        const youtubeSearchBtn = document.getElementById('youtube-search-btn');
+        const youtubeResults = document.getElementById('youtube-results');
+        const toggleVideoBtn = document.getElementById('toggle-video-btn');
+        const videoWrapper = document.getElementById('video-wrapper');
+
+        // --- State Variables ---
+        let stompClient = null;
+        let username = null;
+        let heartbeatInterval = null;
+
+        // --- Heartbeat & Tab Visibility Logic ---
+        function startHeartbeat() {
+            if (heartbeatInterval) clearInterval(heartbeatInterval);
+            heartbeatInterval = setInterval(() => {
+                if (stompClient && stompClient.connected && username && !document.hidden) {
+                    stompClient.send("/app/heartbeat.iamalive", {}, JSON.stringify({ sender: username, type: 'HEARTBEAT' }));
+                    console.log('Heartbeat sent (Tab is visible).');
+                } else {
+                    console.log('Heartbeat skipped (Tab is hidden or user not logged in).');
+                }
+            }, 4000);
+        }
+
+        function stopHeartbeat() {
+            if (heartbeatInterval) clearInterval(heartbeatInterval);
+            heartbeatInterval = null;
+        }
+
+        document.addEventListener('visibilitychange', () => {
+            if (!document.hidden) {
+                console.log("Tab is visible again. Checking connection and session.");
+                if (!stompClient || !stompClient.connected) {
+                    connect();
+                } else {
+                    checkAndRestoreSession();
+                }
+            }
+        });
+
+        // --- Session Management & UI ---
+        const SESSION_DURATION_MINUTES = 60;
+
+        function saveUserSession(loggedInUsername) {
+            const expiry = new Date().getTime() + (SESSION_DURATION_MINUTES * 60 * 1000);
+            const session = { username: loggedInUsername, expiry: expiry };
+            localStorage.setItem('chatUserSession', JSON.stringify(session));
+        }
+
+        function checkAndRestoreSession() {
+            const sessionJSON = localStorage.getItem('chatUserSession');
+            if (!sessionJSON) return;
+            const session = JSON.parse(sessionJSON);
+            if (new Date().getTime() > session.expiry) {
+                localStorage.removeItem('chatUserSession');
+                return;
+            }
+
+            username = session.username;
+            updateLoginStateUI();
+            realignMessages();
+            stompClient.send("/app/chat.addUser", {}, JSON.stringify({ sender: username, type: 'JOIN' }));
+            showSingleMessage({ content: `Welcome back, ${username}!`, type: 'JOIN' });
+            startHeartbeat();
+        }
+
+        function signOut() {
+            localStorage.removeItem('chatUserSession');
+            location.reload();
+        }
+
+        function updateLoginStateUI() {
+            if (username) {
+                signInMenuBtn.classList.add('hidden');
+                signOutBtn.classList.remove('hidden');
+            } else {
+                signInMenuBtn.classList.remove('hidden');
+                signOutBtn.classList.add('hidden');
+            }
+        }
+
+        function realignMessages() {
+            if (!username) return;
+            const messages = document.querySelectorAll('.message-box');
+            messages.forEach(msg => {
+                if (msg.classList.contains('system')) return;
+                const sender = msg.dataset.sender;
+                if (!sender) return;
+                const senderSpan = msg.querySelector('span.font-bold');
+                if (sender === username) {
+                    msg.classList.remove('other');
+                    msg.classList.add('own');
+                    if (senderSpan) { senderSpan.textContent = 'You'; senderSpan.style.color = '#d1d5db'; }
+                } else {
+                    msg.classList.remove('own');
+                    msg.classList.add('other');
+                    if (senderSpan) { senderSpan.textContent = sender; senderSpan.style.color = getUserColor(sender); }
+                }
+            });
+        }
+
+        // --- WebSocket Connection ---
+        async function connect() {
+            if (stompClient && stompClient.connected) return;
+            const socket = new SockJS('/ws');
+            socket.onclose = () => {
+                console.error("WebSocket connection closed.");
+                stopHeartbeat();
+                username = null;
+                stompClient = null;
+                updateLoginStateUI();
+                showSingleMessage({ content: 'You have been disconnected.', type: 'LEAVE' });
+            };
+            stompClient = Stomp.over(socket);
+            stompClient.connect({}, () => {
+                console.log('WebSocket Connected!');
+                stompClient.subscribe('/topic/public', payload => showSingleMessage(JSON.parse(payload.body)));
+                fetchChatHistory().then(() => {
+                    checkAndRestoreSession();
+                });
+            }, (error) => {
+                console.error('Could not connect to WebSocket server.', error);
+                stompClient = null;
+            });
+        }
+
+        // --- Verification & Login Logic ---
+        function handleSuccessfulLogin(loggedInUsername) {
+            username = loggedInUsername;
+            saveUserSession(username);
+            updateLoginStateUI();
+            realignMessages();
+            messageBox.textContent = "Login successful!";
+            messageBox.style.color = 'green';
+            stompClient.send("/app/chat.addUser", {}, JSON.stringify({ sender: username, type: 'JOIN' }));
+            startHeartbeat();
+            setTimeout(resetAndCloseModal, 1500);
+        }
+
+        // --- Core Application Logic ---
+        function showSingleMessage(message) {
+            const messageElement = document.createElement('div');
+            messageElement.classList.add('message-box');
+            if (message.type === 'JOIN' || message.type === 'LEAVE') {
+                messageElement.classList.add('system');
+                messageElement.textContent = message.content;
+            } else {
+                const isOwnMessage = message.sender === username;
+                if (message.sender) {
+                    messageElement.dataset.sender = message.sender;
+                }
+                messageElement.classList.add(isOwnMessage ? 'own' : 'other');
+                const senderSpan = document.createElement('span');
+                senderSpan.className = 'font-bold block mb-1 text-sm';
+                senderSpan.textContent = isOwnMessage ? 'You' : message.sender;
+                senderSpan.style.color = isOwnMessage ? '#d1d5db' : getUserColor(message.sender);
+                messageElement.prepend(senderSpan);
+                const messageText = document.createTextNode(message.content);
+                messageElement.append(messageText);
+            }
+            chatMessages.prepend(messageElement);
+        }
+
+        let ytPlayer = null;
+        let isYtApiReady = false;
+        let queuedVideoRequest = null;
+        const userColors = {};
+        const colorPalette = ['#e53935', '#d81b60', '#8e24aa', '#5e35b1', '#3949ab', '#1e88e5', '#039be5', '#00acc1', '#00897b', '#43a047', '#7cb342', '#c0ca33', '#fdd835', '#ffb300', '#fb8c00', '#f4511e'];
+        window.onYouTubeIframeAPIReady = () => { isYtApiReady = true; if (queuedVideoRequest) { loadYtPlayer(queuedVideoRequest.videoId); } };
+        function onPlayerReady(event) { event.target.mute(); }
+        function loadYtPlayer(videoId) { if (!isYtApiReady) { queuedVideoRequest = { videoId }; return; } if (ytPlayer) { ytPlayer.loadVideoById(videoId); } else { ytPlayer = new YT.Player('player', { height: '100%', width: '100%', videoId: videoId, playerVars: { 'playsinline': 1, 'autoplay': 1, 'controls': 1, 'rel': 0 }, events: { 'onReady': onPlayerReady } }); } }
+        async function searchYoutube() { const query = youtubeSearchInput.value.trim(); if (!query) return; youtubeResults.innerHTML = '<p class="text-center">Searching...</p>'; try { const response = await fetch(`/api/youtube/search?query=${encodeURIComponent(query)}`); if (!response.ok) throw new Error('Search failed.'); const results = await response.json(); youtubeResults.innerHTML = ''; results.forEach(video => { const resultEl = document.createElement('div'); resultEl.className = 'flex items-center p-2 rounded-lg hover:bg-gray-100 cursor-pointer mb-2'; resultEl.addEventListener('click', () => { loadYtPlayer(video.videoId); youtubeModal.classList.add('hidden'); }); resultEl.innerHTML = `<img src="${video.thumbnail}" alt="thumbnail" class="w-24 h-16 object-cover rounded-md mr-4 flex-shrink-0"><span class="font-semibold text-sm">${video.title}</span>`; youtubeResults.appendChild(resultEl); }); } catch (error) { console.error('Error searching YouTube:', error); youtubeResults.innerHTML = `<p class="text-center text-red-500">${error.message}</p>`; } }
+        function getUserColor(sender) { if (!userColors[sender]) { let hash = 0; for (let i = 0; i < sender.length; i++) { hash = sender.charCodeAt(i) + ((hash << 5) - hash); } userColors[sender] = colorPalette[Math.abs(hash % colorPalette.length)]; } return userColors[sender]; }
+        async function fetchChatHistory() { try { const response = await fetch('/api/public-chat/history'); if (response.ok) (await response.json()).forEach(showSingleMessage); } catch (e) { console.error('Error fetching chat history:', e); } }
+        function sendMessage(event) { event.preventDefault(); if (!username) { verificationModal.classList.remove('hidden'); return; } const content = messageInput.value.trim(); if (content && stompClient) { stompClient.send("/app/chat.sendMessage", {}, JSON.stringify({ sender: username, content, type: 'CHAT' })); messageInput.value = ''; } }
+        async function fetchAndDisplayUsers() { try { const response = await fetch('/api/users/online'); const users = await response.json(); userList.innerHTML = ''; if (users.length > 0) { users.forEach(user => { const li = document.createElement('li'); li.textContent = user === username ? 'You (Online)' : user; li.className = 'bg-gray-100 rounded-lg p-2'; userList.appendChild(li); }); } else { userList.innerHTML = '<li class="text-gray-500">No other users online.</li>'; } userModal.classList.remove('hidden'); } catch (e) { console.error('Error fetching users:', e); } }
+        function resetAndCloseModal() { verificationModal.classList.add('hidden'); usernameForm.classList.remove('hidden'); codeForm.classList.add('hidden'); passwordForm.classList.add('hidden'); const codeButton = codeForm.querySelector('button'); if(codeButton) codeButton.disabled = false; const passwordButton = passwordForm.querySelector('button'); if(passwordButton) passwordButton.disabled = false; document.getElementById('username-input').value = ''; document.getElementById('verification-code').value = ''; document.getElementById('password-input').value = ''; messageBox.textContent = ''; }
+
+        // --- Event Listener Setup ---
+        messageInput.addEventListener('focus', () => { if (!username) { verificationModal.classList.remove('hidden'); }});
+        usernameForm.addEventListener('submit', async (event) => { event.preventDefault(); const submitButton = usernameForm.querySelector('button'); submitButton.disabled = true; submitButton.textContent = 'Checking...'; const usernameValue = document.getElementById('username-input').value.trim(); if (!usernameValue) { messageBox.textContent = "Username cannot be empty."; messageBox.style.color = 'red'; submitButton.disabled = false; submitButton.textContent = 'Continue'; return; } try { const response = await fetch('/api/verify/send-code', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ username: usernameValue }) }); const responseText = await response.text(); if (response.ok) { if (responseText.includes("Password required")) { messageBox.textContent = "Welcome back! Please enter your password."; messageBox.style.color = 'black'; usernameForm.classList.add('hidden'); passwordForm.classList.remove('hidden'); } else { messageBox.textContent = responseText; messageBox.style.color = 'green'; usernameForm.classList.add('hidden'); codeForm.classList.remove('hidden'); } } else { messageBox.textContent = responseText; messageBox.style.color = 'red'; } } catch (error) { console.error("Error during username submission:", error); messageBox.textContent = "An error occurred. Please try again."; messageBox.style.color = 'red'; } finally { submitButton.disabled = false; submitButton.textContent = 'Continue'; } });
+        codeForm.addEventListener('submit', async (event) => { event.preventDefault(); const submitButton = codeForm.querySelector('button'); submitButton.disabled = true; const usernameValue = document.getElementById('username-input').value; const code = document.getElementById('verification-code').value; try { const response = await fetch('/api/verify/check-code', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ username: usernameValue, code }) }); if (response.ok) { const resultText = await response.text(); handleSuccessfulLogin(resultText); } else { messageBox.textContent = await response.text(); messageBox.style.color = 'red'; } } catch(error) { messageBox.textContent = "An error occurred during verification."; messageBox.style.color = 'red'; } finally { submitButton.disabled = false; } });
+        passwordForm.addEventListener('submit', async (event) => { event.preventDefault(); const submitButton = passwordForm.querySelector('button'); submitButton.disabled = true; const usernameValue = document.getElementById('username-input').value; const password = document.getElementById('password-input').value; try { const response = await fetch('/api/verify/password', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ username: usernameValue, password: password }) }); if (response.ok) { const resultText = await response.text(); handleSuccessfulLogin(resultText); } else { messageBox.textContent = await response.text(); messageBox.style.color = 'red'; } } catch(error) { messageBox.textContent = "An error occurred during sign in."; messageBox.style.color = 'red'; } finally { submitButton.disabled = false; } });
+
+        // --- Initial Calls ---
+        connect();
+        loadYtPlayer('5qap5aO4i9A');
+        messageForm.addEventListener('submit', sendMessage);
+        signOutBtn.addEventListener('click', signOut);
+        showUsersBtn.addEventListener('click', fetchAndDisplayUsers);
+        closeModalBtn.addEventListener('click', () => userModal.classList.add('hidden'));
+        changeVideoBtn.addEventListener('click', () => youtubeModal.classList.remove('hidden'));
+        closeYoutubeModalBtn.addEventListener('click', () => youtubeModal.classList.add('hidden'));
+        youtubeSearchBtn.addEventListener('click', searchYoutube);
+        youtubeSearchInput.addEventListener('keyup', (e) => { if (e.key === 'Enter') searchYoutube(); });
+        toggleVideoBtn.addEventListener('click', () => videoWrapper.classList.toggle('hidden'));
+        closeVerificationModalBtn.addEventListener('click', resetAndCloseModal);
+        menuBtn.addEventListener('click', (event) => { event.stopPropagation(); dropdownMenu.classList.toggle('hidden'); });
+        signInMenuBtn.addEventListener('click', () => { verificationModal.classList.remove('hidden'); dropdownMenu.classList.add('hidden'); });
+        window.addEventListener('click', (event) => { if (!dropdownMenu.classList.contains('hidden') && !menuBtn.contains(event.target)) { dropdownMenu.classList.add('hidden'); } });
+    });
+</script>
+</body>
+</html>
